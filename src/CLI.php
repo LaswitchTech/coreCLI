@@ -18,8 +18,10 @@ class CLI {
     private $Auth;
 
     // Properties
-    private $CLI = null;
-    private $Reflector = null;
+    private $CLI;
+    private $Reflector;
+    protected $Command;
+    protected $Action;
 
     /**
      * CLI constructor.
@@ -56,38 +58,125 @@ class CLI {
 
             // Identify the Command File
             if(count($argv) > 0){
-                $strCommandName = ucfirst($argv[1] . "Command");
+
+                // Identify the Command
+                $this->Command = ucfirst($argv[1] . "Command");
                 unset($argv[1]);
 
-                // Identify the Action
-                if(count($argv) > 0){
-                    $strMethodName = $argv[2] . "Action";
-                    unset($argv[2]);
+                // Check if the required command is available
+                if(is_file($this->Configurator->root() . "/Command/" . $this->Command . ".php")){
 
-                    // Assemble Command
-                    if(is_file($this->Configurator->root() . "/Command/" . $strCommandName . ".php")){
+                    // Load Command File
+                    require_once $this->Configurator->root() . "/Command/" . $this->Command . ".php";
 
-                        // Load Command File
-                        require_once $this->Configurator->root() . "/Command/" . $strCommandName . ".php";
+                    // Check if command class exist
+                    if(class_exists($this->Command)){
 
                         // Create Command
-                        $this->CLI = new $strCommandName($this->Auth);
+                        $this->CLI = new $this->Command($this->Auth);
 
-                        // Execute Action
-                        $this->CLI->{$strMethodName}(array_values($argv));
+                        // Identify the Action
+                        if(count($argv) > 0){
+
+                            // Identify the Action
+                            $this->Action = $argv[2] . "Action";
+                            unset($argv[2]);
+
+                            // Check if the required action is available
+                            if(method_exists($this->CLI, $this->Action)){
+
+                                // Execute Action
+                                $this->CLI->{$this->Action}(array_values($argv));
+                            } else {
+
+                                // Set error message
+                                $error = "Action[".$this->Action."] not implemented";
+
+                                // Reset Command
+                                $this->Action = null;
+
+                                // Display help
+                                $this->help($error);
+                            }
+                        } else {
+
+                            // Display help
+                            $this->help("Missing action");
+                        }
                     } else {
-                        $this->Logger->debug($this->Configurator->root() . "/Command/" . $strCommandName . ".php not found!");
-                        $this->Logger->debug("[".$strCommandName."] 501 Not Implemented");
-                        $this->output("[".$strCommandName."] 501 Not Implemented");
+
+                        // Set error message
+                        $error = "Unable to load command[".$this->Command."]";
+
+                        // Reset Command
+                        $this->Command = null;
+
+                        // Display help
+                        $this->help($error);
                     }
                 } else {
-                    $this->output("Missing action");
+
+                    // Set error message
+                    $error = "Command[".$this->Command."] not found";
+
+                    // Reset Command
+                    $this->Command = null;
+
+                    // Display help
+                    $this->help($error);
                 }
             } else {
-                $this->output("Missing command");
+
+                // Display help
+                $this->help("Missing command");
             }
         } else {
+
+            // Display help
             $this->output("Could not identify the defining file");
+        }
+    }
+
+    /**
+     * Output command-line help
+     * @param string $string
+     * @return void
+     */
+    protected function help($string) {
+
+        // Log the error
+        // $this->Logger->error($string);
+
+        // List available commands if no command is provided
+        if(!$this->Command){
+
+            // Output Usage
+            $this->output("Usage: ./cli [command] [action] [options]");
+
+            // List available commands
+            $this->output("Available Commands:");
+            foreach(scandir($this->Configurator->root() . "/Command/") as $command){
+                if(str_contains($command, 'Command.php')){
+                    $this->output(" - " . strtolower(str_replace('Command.php','',$command)));
+                }
+            }
+            exit();
+        }
+
+        // List available actions if no action is provided
+        if(!$this->Action){
+
+            // Output Usage
+            $this->output("Usage: ./cli ".strtolower(str_replace('Command','',$this->Command))." [action] [options]");
+
+            // List available actions
+            $this->output("Available Actions:");
+            foreach(get_class_methods($this->CLI) as $method){
+                if(substr($method,-6) == 'Action'){
+                    $this->output(" - " . strtolower(str_replace('Action','',$method)));
+                }
+            }
+            exit();
         }
     }
 
